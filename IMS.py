@@ -1,5 +1,6 @@
 from datetime import datetime
-
+import matplotlib.pyplot as plt
+import pandas as pd
 
 class Part:
     def __init__(self):
@@ -107,7 +108,7 @@ class EthernetCable(Part):
         SPEED_100MBPS = "100mbps"
         SPEED_1GBPS = "1gbps"
 
-    def __init__(self, alpha_type, beta_type, speed):
+    def __init__(self, alpha_type, beta_type, speed, length):
         super().__init__()
         if alpha_type not in [EthernetCable.AlphaType.MALE, EthernetCable.AlphaType.FEMALE]:
             raise ValueError("Invalid alpha type")
@@ -116,18 +117,25 @@ class EthernetCable(Part):
         if speed not in [EthernetCable.Speed.SPEED_10MBPS, EthernetCable.Speed.SPEED_100MBPS,
                          EthernetCable.Speed.SPEED_1GBPS]:
             raise ValueError("Invalid speed")
+        if not isinstance(length, float):
+            raise TypeError("Length must be a floating-point number")
         self.alpha_type = alpha_type
         self.beta_type = beta_type
         self.speed = speed
+        self.length = length
 
     def get_unique_characteristics(self):
-        return {"alpha_type": self.alpha_type, "beta_type": self.beta_type, "speed": self.speed}
+        return {"alpha_type": self.alpha_type, "beta_type": self.beta_type, "speed": self.speed, "length": self.length}
 
     def __str__(self):
-        return f"Alpha Type: {self.alpha_type}, Beta Type: {self.beta_type}, Speed: {self.speed}, Last Updated Date: {self.last_updated_date}"
+        return f"Alpha Type: {self.alpha_type}, Beta Type: {self.beta_type}, Speed: {self.speed}, Length: {self.length}, Last Updated Date: {self.last_updated_date}"
+
+
 class Inventory:
     def __init__(self):
         self.parts_inventory = {}
+        self.usage_counter = {}
+        self.out_of_stock_counter = {}
 
     def add_part(self, part, sku):
         if not isinstance(part, Part):
@@ -135,8 +143,6 @@ class Inventory:
 
         for existing_sku, item in self.parts_inventory.items():
             existing_part = item['part']
-
-            # Check if parts have the same characteristics
             if (type(existing_part) == type(part) and
                     existing_part.get_unique_characteristics() == part.get_unique_characteristics()):
                 quantity = int(
@@ -145,12 +151,13 @@ class Inventory:
                     raise ValueError("Quantity cannot be negative")
                 self.parts_inventory[existing_sku]['quantity'] += quantity
                 self.parts_inventory[existing_sku]['part'].update_inventory()
-                return  # Exit the method after adding quantity to existing part
+                return
 
-        # No matching part found based on characteristics, add new part
         if sku in self.parts_inventory:
             raise ValueError("SKU already exists")
         self.parts_inventory[sku] = {'part': part, 'quantity': 0}
+        self.usage_counter[sku] = 0
+        self.out_of_stock_counter[sku] = 0
 
     def add_inventory(self, sku, quantity):
         if quantity < 0:
@@ -191,6 +198,22 @@ class Inventory:
             raise ValueError("SKU does not exist")
         del self.parts_inventory[sku]
 
+    def track_usage(self, sku):
+        if sku not in self.usage_counter:
+            raise ValueError("SKU does not exist in usage counter")
+        self.usage_counter[sku] += 1
+
+    def track_out_of_stock(self, sku):
+        if sku not in self.out_of_stock_counter:
+            raise ValueError("SKU does not exist in out of stock counter")
+        self.out_of_stock_counter[sku] += 1
+
+    def get_most_used_parts(self, n=5):
+        return sorted(self.usage_counter.items(), key=lambda x: x[1], reverse=True)[:n]
+
+    def get_most_out_of_stock_parts(self, n=5):
+        return sorted(self.out_of_stock_counter.items(), key=lambda x: x[1], reverse=True)[:n]
+
 
 # Interactive menu
 def main_menu():
@@ -202,7 +225,11 @@ def main_menu():
     print("5. Get Part")
     print("6. Search")
     print("7. Delete Part")
-    print("8. Exit")
+    print("8. Track Usage")
+    print("9. Track Out of Stock")
+    print("10. Most Used Parts (Graph)")
+    print("11. Most Out of Stock Parts (Graph)")
+    print("12. Exit")
 
 
 def add_part_menu():
@@ -215,41 +242,115 @@ def add_part_menu():
 
 
 def get_part_characteristics(part_type):
-    characteristics = {}
-    if part_type == 1:  # Resistor
-        resistance = int(input("Enter Resistance (ohms): "))
-        tolerance = int(input("Enter Tolerance (%): "))
-        characteristics['resistance'] = resistance
-        characteristics['tolerance'] = tolerance
-    elif part_type == 2:  # Solder
-        solder_type = input("Enter Solder Type (lead, lead-free, rosin-core, acid-core): ")
-        length = float(input("Enter Length (ft): "))
-        characteristics['solder_type'] = solder_type
-        characteristics['length'] = length
-    elif part_type == 3:  # Wire
-        gauge = float(input("Enter Wire Gauge (in): "))
-        length = float(input("Enter Length (ft): "))
-        characteristics['gauge'] = gauge
-        characteristics['length'] = length
-    elif part_type == 4:  # Display Cable
-        cable_type = input("Enter Cable Type (hdmi, vga, displayport, micro-hdmi): ")
-        length = float(input("Enter Length (ft): "))
-        color = input("Enter Color (hex code): ")
-        characteristics['cable_type'] = cable_type
-        characteristics['length'] = length
-        characteristics['color'] = color
-    elif part_type == 5:  # Ethernet Cable
-        alpha_type = input("Enter Alpha Type (male, female): ")
-        beta_type = input("Enter Beta Type (male, female): ")
-        speed = input("Enter Speed (10mbps, 100mbps, 1gbps, 10gbps): ")
-        length = float(input("Enter Length (ft): "))
-        characteristics['alpha_type'] = alpha_type
-        characteristics['beta_type'] = beta_type
-        characteristics['speed'] = speed
-        characteristics['length'] = length
-    else:
-        print("Invalid choice")
+    while True:
+        characteristics = {}
+        if part_type == 1:  # Resistor
+            try:
+                resistance = int(input("Enter Resistance (ohms): "))
+                tolerance = int(input("Enter Tolerance (%): "))
+                characteristics['resistance'] = resistance
+                characteristics['tolerance'] = tolerance
+                break
+            except ValueError:
+                print("Invalid input. Please enter integer values for resistance and tolerance.")
+        elif part_type == 2:  # Solder
+            solder_type = input("Enter Solder Type (lead, lead-free, rosin-core, acid-core): ")
+            length = input("Enter Length (ft): ")
+            try:
+                length = float(length)
+                if solder_type.lower() not in ['lead', 'lead-free', 'rosin-core', 'acid-core']:
+                    raise ValueError("Invalid solder type.")
+                characteristics['solder_type'] = solder_type
+                characteristics['length'] = length
+                break
+            except ValueError as e:
+                print(f"Error: {e} Please enter a valid solder type.")
+        elif part_type == 3:  # Wire
+            gauge = input("Enter Wire Gauge (in): ")
+            length = input("Enter Length (ft): ")
+            try:
+                gauge = float(gauge)
+                length = float(length)
+                characteristics['gauge'] = gauge
+                characteristics['length'] = length
+                break
+            except ValueError:
+                print("Invalid input. Please enter floating-point values for gauge and length.")
+        elif part_type == 4:  # Display Cable
+            cable_type = input("Enter Cable Type (hdmi, vga, displayport, micro-hdmi): ")
+            length = input("Enter Length (ft): ")
+            color = input("Enter Color (hex code): ")
+            try:
+                length = float(length)
+                if cable_type.lower() not in ['hdmi', 'vga', 'displayport', 'micro-hdmi']:
+                    raise ValueError("Invalid cable type.")
+                characteristics['cable_type'] = cable_type
+                characteristics['length'] = length
+                characteristics['color'] = color
+                break
+            except ValueError as e:
+                print(f"Error: {e} Please enter a valid cable type.")
+        elif part_type == 5:  # Ethernet Cable
+            alpha_type = input("Enter Alpha Type (male, female): ")
+            beta_type = input("Enter Beta Type (male, female): ")
+            speed = input("Enter Speed (10mbps, 100mbps, 1gbps, 10gbps): ")
+            length = input("Enter Length (ft): ")
+            try:
+                length = float(length)
+                if alpha_type.lower() not in ['male', 'female'] or beta_type.lower() not in ['male', 'female']:
+                    raise ValueError("Invalid alpha or beta type.")
+                if speed.lower() not in ['10mbps', '100mbps', '1gbps', '10gbps']:
+                    raise ValueError("Invalid speed.")
+                characteristics['alpha_type'] = alpha_type
+                characteristics['beta_type'] = beta_type
+                characteristics['speed'] = speed
+                characteristics['length'] = length
+                break
+            except ValueError as e:
+                print(f"Error: {e} Please enter valid options for alpha/beta type and speed.")
+        else:
+            print("Invalid choice")
+            break
     return characteristics
+
+
+
+def track_usage_menu():
+    sku = input("Enter SKU for the part used: ")
+    try:
+        inventory.track_usage(sku)
+        print(f"Usage of SKU {sku} tracked successfully")
+    except ValueError as e:
+        print(f"Error: {e}")
+
+
+def track_out_of_stock_menu():
+    sku = input("Enter SKU for the part that fell out of stock: ")
+    try:
+        inventory.track_out_of_stock(sku)
+        print(f"Out of stock occurrence of SKU {sku} tracked successfully")
+    except ValueError as e:
+        print(f"Error: {e}")
+
+
+def plot_most_used_parts():
+    most_used = inventory.get_most_used_parts()
+    df = pd.DataFrame(most_used, columns=['SKU', 'Usage Count'])
+    df.plot(kind='bar', x='SKU', y='Usage Count', legend=None)
+    plt.title('Most Used Parts')
+    plt.xlabel('SKU')
+    plt.ylabel('Usage Count')
+    plt.show()
+
+
+def plot_most_out_of_stock_parts():
+    most_out_of_stock = inventory.get_most_out_of_stock_parts()
+    df = pd.DataFrame(most_out_of_stock, columns=['SKU', 'Out of Stock Count'])
+    df.plot(kind='bar', x='SKU', y='Out of Stock Count', legend=None)
+    plt.title('Most Out of Stock Parts')
+    plt.xlabel('SKU')
+    plt.ylabel('Out of Stock Count')
+    plt.show()
 
 
 inventory = Inventory()
@@ -396,9 +497,22 @@ while True:
         except ValueError as e:
             print(f"Error: {e}")
 
-    elif choice == '8':  # Exit
+    elif choice == '8':  # Track Usage
+        track_usage_menu()
+
+    elif choice == '9':  # Track Out of Stock
+        track_out_of_stock_menu()
+
+    elif choice == '10':  # Most Used Parts (Graph)
+        plot_most_used_parts()
+
+    elif choice == '11':  # Most Out of Stock Parts (Graph)
+        plot_most_out_of_stock_parts()
+
+    elif choice == '12':  # Exit
         print("Exiting...")
         break
 
     else:
         print("Invalid choice")
+
